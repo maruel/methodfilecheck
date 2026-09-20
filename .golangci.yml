@@ -1,0 +1,39 @@
+# Static analysis linter rules and enabled checks for the Go codebase.
+
+version: "2"
+run:
+  tests: true
+linters:
+  enable:
+    - copyloopvar
+    - dupword
+    - errorlint
+    - exhaustive
+    - funcorder
+    - gocritic
+    - godot
+    - gosec
+    - misspell
+    - nilerr
+    - nilnil
+    - nolintlint
+    - perfsprint
+    - prealloc
+    - revive
+    - unconvert
+    - unparam
+    - unused
+    - usestdlibvars
+    - whitespace
+  settings:
+    gosec:
+      excludes:
+        - G204 # Subprocess with variable: patterns come from the command line, paths from go list.
+        - G304 # File inclusion via variable: the files are the package's own sources.
+    exhaustive:
+      default-signifies-exhaustive: true
+  custom:
+    methodfilecheck:
+      type: module
+      description: Methods must be declared in the same file as their receiver type, in one contiguous block.
+      settings: {}
