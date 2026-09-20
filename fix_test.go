@@ -392,8 +392,9 @@ func TestApplyFixInvalid(t *testing.T) {
 	}
 }
 
-func TestWriteFileInvalid(t *testing.T) {
-	if err := writeFile(filepath.Join(t.TempDir(), "a.go"), []string{"package p", "func ("}); err == nil {
+func TestContentsInvalid(t *testing.T) {
+	f := &Fix{SrcFile: filepath.Join(t.TempDir(), "a.go"), SrcStart: 1, SrcEnd: 2, DstFile: "a.go", DstLine: 1}
+	if _, err := f.Contents(); err == nil {
 		t.Error("expected a format error")
 	}
 }

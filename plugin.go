@@ -26,6 +26,8 @@
 package methodfilecheck
 
 import (
+	"go/token"
+
 	"github.com/golangci/plugin-module-register/register"
 	"golang.org/x/tools/go/analysis"
 )
@@ -64,7 +66,36 @@ func (plugin) GetLoadMode() string {
 
 func pluginRun(pass *analysis.Pass) (interface{}, error) {
 	for _, v := range CheckSyntax(pass.Fset, pass.Files) {
-		pass.Report(analysis.Diagnostic{Pos: v.Pos, Message: v.Message, Category: "methodfilecheck"})
+		diag := analysis.Diagnostic{Pos: v.Pos, Message: v.Message, Category: "methodfilecheck"}
+		// golangci-lint applies suggested fixes to the file the diagnostic was
+		// reported in, so only same-file moves can be fixed through
+		// `golangci-lint run --fix`; cross-file moves need `methodfilecheck -fix`.
+		if v.Fix != nil && v.Fix.SrcFile == v.Fix.DstFile {
+			if edit, ok := wholeFileEdit(pass.Fset, v); ok {
+				diag.SuggestedFixes = []analysis.SuggestedFix{
+					{Message: "Reorder declarations to satisfy methodfilecheck", TextEdits: []analysis.TextEdit{edit}},
+				}
+			}
+		}
+		pass.Report(diag)
 	}
 	return nil, nil //nolint:nilnil // analysis.Run results are unused by golangci-lint
+}
+
+// wholeFileEdit returns a TextEdit replacing the file holding the violation
+// with its gofmt-clean, fixed contents.
+func wholeFileEdit(fset *token.FileSet, v Violation) (analysis.TextEdit, bool) {
+	contents, err := v.Fix.Contents()
+	if err != nil {
+		return analysis.TextEdit{}, false
+	}
+	tf := fset.File(v.Pos)
+	if tf == nil {
+		return analysis.TextEdit{}, false
+	}
+	content, ok := contents[v.Fix.SrcFile]
+	if !ok {
+		return analysis.TextEdit{}, false
+	}
+	return analysis.TextEdit{Pos: tf.Pos(0), End: tf.Pos(tf.Size()), NewText: content}, true
 }

@@ -54,7 +54,9 @@ golangci-lint custom --version v2.13.2
 ./custom-gcl run ./...
 ```
 
-The plugin only reports; apply `-fix` through the command line.
+The plugin carries suggested fixes for same-file violations, so
+`golangci-lint run --fix` reorders the code automatically. Cross-file moves are
+report-only there; apply them with `methodfilecheck -fix`.
 
 ## What it checks
 

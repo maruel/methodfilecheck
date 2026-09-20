@@ -61,15 +61,6 @@ func (v *Violation) String() string {
 	return fmt.Sprintf("%s:%d: %s", rel(v.File), v.Line, v.Message)
 }
 
-// Fix moves a block of lines to make the code pass the check.
-type Fix struct {
-	SrcFile          string // absolute path of the file holding the block
-	SrcStart, SrcEnd int    // 1-based inclusive line range to move, doc comment included
-	DstFile          string // absolute path of the destination file
-	DstLine          int    // 1-based anchor line in DstFile, doc comment included when Above
-	Above            bool   // insert above DstLine instead of below
-}
-
 // file is one parsed source file of a package group.
 type file struct {
 	fset    *token.FileSet

@@ -91,12 +91,36 @@ func hashPackage(pkg Package) (string, error) {
 // applyFix moves the block of lines described by fix between the files. The
 // destination file is rewritten gofmt clean or not at all.
 func applyFix(fix *Fix) error {
-	srcLines, err := readLines(fix.SrcFile)
+	contents, err := fix.Contents()
 	if err != nil {
 		return err
 	}
+	for path, content := range contents {
+		if err := os.WriteFile(path, content, 0o600); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Fix moves a block of lines to make the code pass the check.
+type Fix struct {
+	SrcFile          string // absolute path of the file holding the block
+	SrcStart, SrcEnd int    // 1-based inclusive line range to move, doc comment included
+	DstFile          string // absolute path of the destination file
+	DstLine          int    // 1-based anchor line in DstFile, doc comment included when Above
+	Above            bool   // insert above DstLine instead of below
+}
+
+// Contents returns the gofmt-clean replacement contents for the files the fix
+// touches, keyed by absolute path. The files on disk are left untouched.
+func (fix *Fix) Contents() (map[string][]byte, error) {
+	srcLines, err := readLines(fix.SrcFile)
+	if err != nil {
+		return nil, err
+	}
 	if fix.SrcStart < 1 || fix.SrcStart > fix.SrcEnd || fix.SrcEnd > len(srcLines) {
-		return fmt.Errorf("%s: invalid block to move: lines %d-%d of %d", fix.SrcFile, fix.SrcStart, fix.SrcEnd, len(srcLines))
+		return nil, fmt.Errorf("%s: invalid block to move: lines %d-%d of %d", fix.SrcFile, fix.SrcStart, fix.SrcEnd, len(srcLines))
 	}
 	block := slices.Clone(srcLines[fix.SrcStart-1 : fix.SrcEnd])
 	if fix.SrcFile == fix.DstFile {
@@ -104,18 +128,36 @@ func applyFix(fix *Fix) error {
 		// Adjust the insertion point for the lines removed below.
 		shift := min(max(idx, fix.SrcStart-1), fix.SrcEnd) - (fix.SrcStart - 1)
 		rest := slices.Delete(slices.Clone(srcLines), fix.SrcStart-1, fix.SrcEnd)
-		return writeFile(fix.DstFile, insertBlock(rest, idx-shift, block))
+		content, err := formatLines(fix.DstFile, insertBlock(rest, idx-shift, block))
+		if err != nil {
+			return nil, err
+		}
+		return map[string][]byte{fix.DstFile: content}, nil
 	}
 	dstLines, err := readLines(fix.DstFile)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	idx := insertIndex(fix, len(dstLines))
-	if err := writeFile(fix.DstFile, insertBlock(dstLines, idx, block)); err != nil {
-		return err
+	dst, err := formatLines(fix.DstFile, insertBlock(dstLines, idx, block))
+	if err != nil {
+		return nil, err
 	}
-	rest := slices.Delete(slices.Clone(srcLines), fix.SrcStart-1, fix.SrcEnd)
-	return writeFile(fix.SrcFile, rest)
+	src, err := formatLines(fix.SrcFile, slices.Delete(slices.Clone(srcLines), fix.SrcStart-1, fix.SrcEnd))
+	if err != nil {
+		return nil, err
+	}
+	return map[string][]byte{fix.DstFile: dst, fix.SrcFile: src}, nil
+}
+
+// formatLines validates that the edited lines still parse and returns the file
+// contents gofmt clean.
+func formatLines(path string, lines []string) ([]byte, error) {
+	formatted, err := format.Source([]byte(strings.Join(lines, "\n") + "\n"))
+	if err != nil {
+		return nil, fmt.Errorf("format %s after edit: %w", path, err)
+	}
+	return formatted, nil
 }
 
 // insertIndex returns the 0-based index in lines before which the block must
@@ -138,16 +180,6 @@ func insertBlock(lines []string, idx int, block []string) []string {
 		block = append(block, "")
 	}
 	return slices.Insert(lines, idx, block...)
-}
-
-// writeFile writes gofmt-cleaned lines if the result still parses, and
-// leaves the file untouched otherwise.
-func writeFile(path string, lines []string) error {
-	formatted, err := format.Source([]byte(strings.Join(lines, "\n") + "\n"))
-	if err != nil {
-		return fmt.Errorf("format %s after edit: %w", path, err)
-	}
-	return os.WriteFile(path, formatted, 0o600)
 }
 
 func readLines(path string) ([]string, error) {

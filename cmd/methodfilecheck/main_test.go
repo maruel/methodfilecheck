@@ -50,6 +50,9 @@ func TestRun(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "1 method file placement violation") {
 			t.Fatalf("got %v", err)
 		}
+		if !strings.Contains(err.Error(), "re-run with -fix") {
+			t.Fatalf("error should suggest -fix, got %v", err)
+		}
 		if got, want := out.String(), "a.go:7: method Foo.A: type declared at line 3"; !strings.HasPrefix(got, want) {
 			t.Fatalf("got %q, want prefix %q", got, want)
 		}
@@ -71,6 +74,16 @@ func TestRun(t *testing.T) {
 		}
 		if want := "type Foo struct{}\n\nfunc (f *Foo) A() {}\n\nfunc helper() {}\n"; !strings.Contains(string(src), want) {
 			t.Fatalf("got:\n%s", src)
+		}
+	})
+	t.Run("fix stuck", func(t *testing.T) {
+		// Two types in one grouped decl each with methods cannot both be
+		// adjacent to their type; the fixer must stop and say so.
+		writeModule(t, map[string]string{
+			"a.go": "package p\n\ntype (\n\tFoo struct{}\n\tBar struct{}\n)\n\nfunc (f *Foo) A() {}\n\nfunc (b *Bar) A() {}\n",
+		})
+		if err := run(&bytes.Buffer{}, nil, true); err == nil || !strings.Contains(err.Error(), "cycle") {
+			t.Fatalf("got %v", err)
 		}
 	})
 	t.Run("bad pattern", func(t *testing.T) {

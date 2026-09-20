@@ -54,8 +54,8 @@ func run(out io.Writer, patterns []string, fix bool) error {
 		}
 		violations += len(vs)
 	}
-	if violations != 0 {
-		return fmt.Errorf("found %d method file placement violation(s)", violations)
+	if violations != 0 && !fix {
+		return fmt.Errorf("found %d method file placement violation(s); re-run with -fix to resolve them automatically", violations)
 	}
 	return nil
 }
