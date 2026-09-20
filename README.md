@@ -32,7 +32,7 @@ version: "2"
 plugins:
   - module: github.com/maruel/methodfilecheck
     import: github.com/maruel/methodfilecheck
-    path: ../methodfilecheck # or a published version: version: v1.x.y
+    version: v1.1.1
 ```
 
 ```yaml
