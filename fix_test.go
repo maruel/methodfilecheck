@@ -5,6 +5,8 @@
 package methodfilecheck
 
 import (
+	"bytes"
+	"go/format"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -287,6 +289,89 @@ func NewBar() *Bar { return nil }
 			})
 		}
 	})
+}
+
+func TestLineEditMatchesContents(t *testing.T) {
+	// For every same-file fix, splicing the LineEdit ranges into the file must
+	// produce the same result as Contents.
+	cases := []struct {
+		name  string
+		files map[string]string
+	}{
+		{"free function between type and methods", map[string]string{"a.go": "package p\n\ntype Foo struct{}\n\nfunc helper() {}\n\nfunc (f *Foo) A() {}\n"}},
+		{"method before type", map[string]string{"a.go": "package p\n\nfunc (f *Foo) A() {}\n\ntype Foo struct{}\n"}},
+		{"constructor after methods", map[string]string{"a.go": "package p\n\ntype Foo struct{}\n\nfunc (f *Foo) A() {}\n\nfunc NewFoo() *Foo { return nil }\n"}},
+		{"interleaved receivers", map[string]string{"a.go": "package p\n\ntype Foo struct{}\n\nfunc (f *Foo) A() {}\n\ntype Bar struct{}\n\nfunc (b *Bar) A() {}\n\nfunc (f *Foo) B() {}\n"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			pkg := writeFiles(t, c.files)
+			vs, err := Check(pkg)
+			if err != nil || len(vs) == 0 {
+				t.Fatalf("expected violations, got %v, %v", vs, err)
+			}
+			for _, v := range vs {
+				if v.Fix == nil || v.Fix.SrcFile != v.Fix.DstFile {
+					continue
+				}
+				start, end, replacement, ok := v.Fix.LineEdit()
+				if !ok {
+					t.Fatal("LineEdit returned false for a same-file fix")
+				}
+				lines := strings.Split(strings.TrimSuffix(read(t, v.Fix.SrcFile), "\n"), "\n")
+				var out []string
+				out = append(out, lines[:start-1]...)
+				out = append(out, replacement...)
+				out = append(out, lines[end:]...)
+				want, err := v.Fix.Contents()
+				if err != nil {
+					t.Fatal(err)
+				}
+				got, err := format.Source([]byte(strings.Join(out, "\n") + "\n"))
+				if err != nil {
+					t.Fatalf("spliced file does not parse: %v\n%s", err, strings.Join(out, "\n"))
+				}
+				if !bytes.Equal(got, want[v.Fix.SrcFile]) {
+					t.Fatalf("LineEdit splice disagrees with Contents:\n%s\nwant:\n%s", got, want[v.Fix.SrcFile])
+				}
+			}
+		})
+	}
+}
+
+func TestFixPackagePreservesFileMode(t *testing.T) {
+	pkg := writeFiles(t, map[string]string{"a.go": "package p\n\ntype Foo struct{}\n\nfunc helper() {}\n\nfunc (f *Foo) A() {}\n"})
+	path := filepath.Join(pkg.Dir, "a.go")
+	if err := os.Chmod(path, 0o644); err != nil { //nolint:gosec // testing that modes are preserved.
+		t.Fatal(err)
+	}
+	if _, err := FixPackage(pkg); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o644 {
+		t.Fatalf("got mode %v, want 0o644", got)
+	}
+}
+
+func TestFixPackageBatchesAcrossFiles(t *testing.T) {
+	pkg := writeFiles(t, map[string]string{
+		"a.go": "package p\n\ntype Foo struct{}\n\nfunc helper() {}\n\nfunc (f *Foo) A() {}\n",
+		"b.go": "package p\n\ntype Bar struct{}\n\nfunc helper2() {}\n\nfunc (b *Bar) B() {}\n",
+	})
+	vs, err := FixPackage(pkg)
+	if err != nil {
+		t.Fatalf("violations remaining:\n%s\nerr: %v", joinViolations(vs), err)
+	}
+	for _, name := range []string{"a.go", "b.go"} {
+		out := read(t, filepath.Join(pkg.Dir, name))
+		if !strings.Contains(out, "type Foo struct{}\n\nfunc (f *Foo) A() {}") && !strings.Contains(out, "type Bar struct{}\n\nfunc (b *Bar) B() {}") {
+			t.Fatalf("%s was not fixed:\n%s", name, out)
+		}
+	}
 }
 
 func TestFixPackageCycles(t *testing.T) {

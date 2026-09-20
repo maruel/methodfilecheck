@@ -17,9 +17,9 @@ import (
 	"strings"
 )
 
-// maxFixPasses bounds the fix loop. Each pass applies one fix, which resolves
-// at least one violation without introducing new ones, so real fixpoint is
-// reached well below this bound.
+// maxFixPasses bounds the fix loop. Each pass applies every fix whose files do
+// not collide with another applied fix, so the number of passes stays well
+// below this bound.
 const maxFixPasses = 128
 
 // FixPackage reorders the package files on disk until [Check] reports no violation.
@@ -46,23 +46,28 @@ func FixPackage(pkg Package) ([]Violation, error) {
 			return vs, errors.New("fixes cycle without converging; resolve the remaining violations by hand")
 		}
 		seen[state] = struct{}{}
-		fix := vs[0].Fix
-		for _, v := range vs {
-			if v.Fix != nil {
-				fix = v.Fix
-				break
+		// Apply every fix whose files no other applied fix touches this pass;
+		// line numbers of untouched files stay valid.
+		used := map[string]bool{}
+		applied := 0
+		for i := range vs {
+			fix := vs[i].Fix
+			if fix == nil || used[fix.SrcFile] || used[fix.DstFile] {
+				continue
 			}
-		}
-		if fix == nil {
-			return vs, nil
-		}
-		if err := applyFix(fix); err != nil {
-			return vs, err
-		}
-		for _, p := range []string{fix.SrcFile, fix.DstFile} {
-			if !slices.Contains(touched, p) {
-				touched = append(touched, p)
+			if err := applyFix(fix); err != nil {
+				return vs, err
 			}
+			used[fix.SrcFile], used[fix.DstFile] = true, true
+			for _, p := range []string{fix.SrcFile, fix.DstFile} {
+				if !slices.Contains(touched, p) {
+					touched = append(touched, p)
+				}
+			}
+			applied++
+		}
+		if applied == 0 {
+			return vs, errors.New("no fix can be applied; resolve the remaining violations by hand")
 		}
 	}
 	vs, err := Check(pkg)
@@ -96,7 +101,11 @@ func applyFix(fix *Fix) error {
 		return err
 	}
 	for path, content := range contents {
-		if err := os.WriteFile(path, content, 0o600); err != nil {
+		mode := os.FileMode(0o644)
+		if info, err := os.Stat(path); err == nil {
+			mode = info.Mode().Perm()
+		}
+		if err := os.WriteFile(path, content, mode); err != nil {
 			return err
 		}
 	}
@@ -110,6 +119,38 @@ type Fix struct {
 	DstFile          string // absolute path of the destination file
 	DstLine          int    // 1-based anchor line in DstFile, doc comment included when Above
 	Above            bool   // insert above DstLine instead of below
+}
+
+// LineEdit describes a same-file fix in original file coordinates: the lines
+// [start, end] are replaced by replacement, which relocates the misplaced
+// block, blank line padding included, to its destination. ok is false for
+// two-file fixes, which golangci-lint's fixer cannot apply, and when the fix
+// is stale.
+func (fix *Fix) LineEdit() (start, end int, replacement []string, ok bool) {
+	if fix.SrcFile != fix.DstFile {
+		return 0, 0, nil, false
+	}
+	lines, err := readLines(fix.SrcFile)
+	if err != nil || fix.SrcStart < 1 || fix.SrcStart > fix.SrcEnd || fix.SrcEnd > len(lines) {
+		return 0, 0, nil, false
+	}
+	block := slices.Clone(lines[fix.SrcStart-1 : fix.SrcEnd])
+	orig := insertIndex(fix, len(lines))
+	shift := min(max(orig, fix.SrcStart-1), fix.SrcEnd) - (fix.SrcStart - 1)
+	idx := orig - shift
+	rest := slices.Delete(slices.Clone(lines), fix.SrcStart-1, fix.SrcEnd)
+	padded := paddedBlock(rest, idx, block)
+	switch {
+	case idx == fix.SrcStart-1:
+		return 0, 0, nil, false // already in place
+	case idx < fix.SrcStart-1: // the block moves up
+		start, end = idx+1, fix.SrcEnd
+		replacement = append(slices.Clone(padded), lines[idx:fix.SrcStart-1]...)
+	default: // the block moves down
+		start, end = fix.SrcStart, orig
+		replacement = append(slices.Clone(lines[fix.SrcEnd:orig]), padded...)
+	}
+	return start, end, replacement, true
 }
 
 // Contents returns the gofmt-clean replacement contents for the files the fix
@@ -170,16 +211,22 @@ func insertIndex(fix *Fix, size int) int {
 	return min(max(idx, 0), size)
 }
 
-// insertBlock splices block into lines at idx, adding blank lines so the
-// block stays separated from the surrounding declarations.
-func insertBlock(lines []string, idx int, block []string) []string {
+// paddedBlock adds blank lines around block so it stays separated from the
+// lines before and after its insertion point idx.
+func paddedBlock(lines []string, idx int, block []string) []string {
 	if idx > 0 && lines[idx-1] != "" {
 		block = append([]string{""}, block...)
 	}
 	if idx < len(lines) && lines[idx] != "" {
 		block = append(block, "")
 	}
-	return slices.Insert(lines, idx, block...)
+	return block
+}
+
+// insertBlock splices block into lines at idx, adding blank lines so the
+// block stays separated from the surrounding declarations.
+func insertBlock(lines []string, idx int, block []string) []string {
+	return slices.Insert(lines, idx, paddedBlock(lines, idx, block)...)
 }
 
 func readLines(path string) ([]string, error) {
