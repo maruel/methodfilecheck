@@ -22,6 +22,39 @@ type Violation struct {
 	Fix     *Fix
 }
 
+// crossFileViolation reports a run whose receiver type is declared in another
+// file of the same package.
+func crossFileViolation(r *run, t *typeDecl, b *block) *Violation {
+	fix := &Fix{SrcFile: r.file.path, SrcStart: r.start, SrcEnd: r.end}
+	var reason string
+	switch {
+	case b == nil || b.lastEnd == 0:
+		fix.DstFile, fix.DstLine = t.file.path, t.endLine
+		reason = "after " + r.receiver + " declaration and any constructors"
+	case !r.anyExp:
+		fix.DstFile, fix.DstLine = t.file.path, b.lastEnd
+		reason = "after last " + r.receiver + " method"
+	case b.lastExp != 0:
+		fix.DstFile, fix.DstLine = t.file.path, b.lastExp
+		reason = "after last exported " + r.receiver + " method"
+	default:
+		fix.DstFile, fix.DstLine, fix.Above = t.file.path, b.firstDoc, true
+		reason = "before " + r.receiver + " methods (exported first)"
+	}
+	verb := "after"
+	if fix.Above {
+		verb = "above"
+	}
+	return &Violation{
+		File: r.file.path,
+		Line: r.first,
+		Pos:  r.fn.Pos(),
+		Message: fmt.Sprintf("method %s.%s: move %s %s:%d (%s)", r.receiver,
+			r.fn.Name.Name, verb, rel(fix.DstFile), fix.DstLine, reason),
+		Fix: fix,
+	}
+}
+
 // String renders the violation as a diagnostic line with a path relative to
 // the working directory when possible.
 func (v *Violation) String() string {
@@ -126,39 +159,6 @@ func checkGroup(files []*file) []Violation {
 		vs = append(vs, *crossFileViolation(r, t, blocks[r.receiver+"\x00"+t.file.path]))
 	}
 	return vs
-}
-
-// crossFileViolation reports a run whose receiver type is declared in another
-// file of the same package.
-func crossFileViolation(r *run, t *typeDecl, b *block) *Violation {
-	fix := &Fix{SrcFile: r.file.path, SrcStart: r.start, SrcEnd: r.end}
-	var reason string
-	switch {
-	case b == nil || b.lastEnd == 0:
-		fix.DstFile, fix.DstLine = t.file.path, t.endLine
-		reason = "after " + r.receiver + " declaration and any constructors"
-	case !r.anyExp:
-		fix.DstFile, fix.DstLine = t.file.path, b.lastEnd
-		reason = "after last " + r.receiver + " method"
-	case b.lastExp != 0:
-		fix.DstFile, fix.DstLine = t.file.path, b.lastExp
-		reason = "after last exported " + r.receiver + " method"
-	default:
-		fix.DstFile, fix.DstLine, fix.Above = t.file.path, b.firstDoc, true
-		reason = "before " + r.receiver + " methods (exported first)"
-	}
-	verb := "after"
-	if fix.Above {
-		verb = "above"
-	}
-	return &Violation{
-		File: r.file.path,
-		Line: r.first,
-		Pos:  r.fn.Pos(),
-		Message: fmt.Sprintf("method %s.%s: move %s %s:%d (%s)", r.receiver,
-			r.fn.Name.Name, verb, rel(fix.DstFile), fix.DstLine, reason),
-		Fix: fix,
-	}
 }
 
 // checkAdjacency reports each receiver whose first method in src does not

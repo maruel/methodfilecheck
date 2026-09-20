@@ -15,7 +15,6 @@ jobs:
   test:
     name: "test"
     runs-on: ubuntu-latest
-    continue-on-error: true
     defaults:
       run:
         shell: bash
@@ -44,7 +43,6 @@ jobs:
   lint:
     name: "lint"
     runs-on: ubuntu-latest
-    continue-on-error: true
     defaults:
       run:
         shell: bash
@@ -70,7 +68,6 @@ jobs:
   codeql:
     name: "codeql"
     runs-on: ubuntu-latest
-    continue-on-error: true
     permissions:
       security-events: write
     steps:
