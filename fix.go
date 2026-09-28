@@ -2,6 +2,8 @@
 // source code is governed by the Apache v2 license that can be found in the
 // LICENSE file.
 
+// Automatic fixes for misplaced Go methods.
+
 package methodfilecheck
 
 import (

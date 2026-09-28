@@ -25,8 +25,8 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - name: "Check: go test -race"
-        run: go test -timeout=600s -race ./...
+      - name: "Check: tests"
+        run: make test
       - name: "Check: tree is clean"
         if: always()
         run: |
@@ -51,19 +51,10 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - name: "Check: lint; golangci-lint with the methodfilecheck plugin"
-        run: make lint
-      - name: "Check: formatting; gofmt, goimports"
-        run: make format-check
-      - name: "Check: go mod tidy doesn't modify files"
-        run: |
-          go mod tidy
-          TOUCHED=$(git status --porcelain)
-          if ! test -z "$TOUCHED"; then
-            echo "go mod tidy was not clean, please update:"
-            git diff
-            false
-          fi
+      - name: "Check: build"
+        run: make build
+      - name: "Check: verify"
+        run: make verify
 
   codeql:
     name: "codeql"
