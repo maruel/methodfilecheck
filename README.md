@@ -23,39 +23,12 @@ methodfilecheck -fix ./...
 ## golangci-lint
 
 The package ships a [golangci-lint module
-plugin](https://golangci-lint.run/docs/plugins/module-plugins/). Build the
-custom linter binary and run it instead of `golangci-lint`:
-
-```bash
-# .custom-gcl.yml, next to .golangci.yml
-version: "2"
-plugins:
-  - module: github.com/maruel/methodfilecheck
-    import: github.com/maruel/methodfilecheck
-    version: v1.1.1
-```
-
-```yaml
-# .golangci.yml
-version: "2"
-linters:
-  enable:
-    - methodfilecheck
-  settings:
-    custom:
-      methodfilecheck:
-        type: module
-        description: Methods must be declared in the same file as their receiver type, in one contiguous block.
-        settings: {}
-```
-
-```bash
-golangci-lint custom --version v2.13.2
-./custom-gcl run ./...
-```
+plugin](https://golangci-lint.run/docs/plugins/module-plugins/). The checked-in
+[plugin config](.custom-gcl.yml) and [linter config](.golangci.yml) are the
+current examples. Run `make custom-gcl && ./custom-gcl run ./...` here.
 
 The plugin carries suggested fixes for same-file violations, so
-`golangci-lint run --fix` reorders the code automatically. Cross-file moves are
+`./custom-gcl run --fix` reorders the code automatically. Cross-file moves are
 report-only there; apply them with `methodfilecheck -fix`.
 
 ## What it checks
