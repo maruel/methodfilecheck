@@ -1,8 +1,14 @@
 # Build, verify, and test the Go linter and its AGENTS.md index.
 
-.DEFAULT_GOAL := verify
+.DEFAULT_GOAL := help
 
-.PHONY: build custom-gcl test verify
+.PHONY: build custom-gcl git-hooks help test verify
+
+help:
+	@printf '  %-14s - %s\n' 'make build' 'Build all Go packages'
+	@printf '  %-14s - %s\n' 'make verify' 'Run the static checks'
+	@printf '  %-14s - %s\n' 'make test' 'Run Go tests with the race detector'
+	@printf '  %-14s - %s\n' 'make git-hooks' 'Install Git hooks'
 
 build:
 	@go build ./...
@@ -21,3 +27,6 @@ test:
 # Go linting must run through the custom binary built from this checkout.
 custom-gcl: .custom-gcl.yml
 	@version=$$(go list -m -f '{{.Version}}' github.com/golangci/golangci-lint/v2) && go tool golangci-lint custom --version "$$version"
+
+git-hooks:
+	@./scripts/install-git-hooks.sh
