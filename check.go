@@ -166,7 +166,7 @@ func checkAdjacency(src *file, types map[string]*typeDecl, runs []*run) []Violat
 			continue
 		}
 		for _, spec := range gen.Specs {
-			t := spec.(*ast.TypeSpec)
+			t := spec.(*ast.TypeSpec) //nolint:forcetypeassert // A type declaration contains only type specs.
 			typeIndexes[t.Name.Name] = i
 			typeLines[t.Name.Name] = src.fset.Position(t.Pos()).Line
 		}
@@ -322,7 +322,7 @@ func collectTypes(src *file, types map[string]*typeDecl) {
 			continue
 		}
 		for _, spec := range gen.Specs {
-			ts := spec.(*ast.TypeSpec)
+			ts := spec.(*ast.TypeSpec) //nolint:forcetypeassert // A type declaration contains only type specs.
 			if _, ok := types[ts.Name.Name]; ok {
 				continue
 			}

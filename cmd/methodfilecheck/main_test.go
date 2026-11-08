@@ -8,6 +8,7 @@ package main
 
 import (
 	"bytes"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,9 +21,7 @@ func writeModule(t *testing.T, files map[string]string) string {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	all := map[string]string{"go.mod": "module p\n\ngo 1.27\n"}
-	for name, src := range files {
-		all[name] = src
-	}
+	maps.Copy(all, files)
 	for name, src := range all {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(src), 0o600); err != nil {
 			t.Fatal(err)

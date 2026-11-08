@@ -65,7 +65,7 @@ func (plugin) GetLoadMode() string {
 	return register.LoadModeSyntax
 }
 
-func pluginRun(pass *analysis.Pass) (interface{}, error) {
+func pluginRun(pass *analysis.Pass) (any, error) {
 	for _, v := range CheckSyntax(pass.Fset, pass.Files) {
 		diag := analysis.Diagnostic{Pos: v.Pos, Message: v.Message, Category: "methodfilecheck"}
 		// golangci-lint applies suggested fixes to the file the diagnostic was

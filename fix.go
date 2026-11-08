@@ -255,7 +255,7 @@ func runGoimports(paths []string) error {
 		return nil //nolint:nilerr // goimports is optional
 	}
 	args := append([]string{"-w"}, paths...)
-	if out, err := exec.Command(bin, args...).CombinedOutput(); err != nil {
+	if out, err := exec.Command(bin, args...).CombinedOutput(); err != nil { //nolint:noctx // FixPackage has no caller context.
 		return fmt.Errorf("goimports: %w\n%s", err, bytes.TrimSpace(out))
 	}
 	return nil

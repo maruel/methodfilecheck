@@ -46,7 +46,7 @@ func ListPackages(patterns []string) ([]Package, error) {
 		patterns = []string{"./..."}
 	}
 	args := append([]string{"list", "-json"}, patterns...)
-	cmd := exec.Command("go", args...)
+	cmd := exec.Command("go", args...) //nolint:noctx // Package listing has no caller context.
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("go %s: %w\n%s", strings.Join(args, " "), err, bytes.TrimSpace(out))
@@ -56,9 +56,10 @@ func ListPackages(patterns []string) ([]Package, error) {
 	for {
 		var raw struct {
 			Package
+
 			Error *struct{ Err string }
 		}
-		if err := dec.Decode(&raw); err != nil {
+		if err := dec.Decode(&raw); err != nil { //nolint:musttag // go list emits exported Go field names.
 			if errors.Is(err, io.EOF) {
 				break
 			}
